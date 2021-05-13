@@ -6,8 +6,10 @@ import { displayErrorLinks } from './displayErrors';
 import { DefinitionProvider} from './goToDefinition';
 import { HoverProvider } from './hover';
 import * as cp from 'child_process';
+import { PassThrough } from 'stream';
 
 export const queryMizarMsg = makeQueryFunction();
+let timer: NodeJS.Timer;
 
 /**
  * @fn
@@ -110,6 +112,8 @@ export function activate(context: vscode.ExtensionContext) {
         vscode.languages.createDiagnosticCollection('mizar');
     channel.show(true);
 
+    loadConfigure(diagnosticCollection);
+
     // Mizarコマンドの登録
     for (let cmd in MIZAR_COMMANDS){
         context.subscriptions.push(
@@ -152,3 +156,88 @@ export function activate(context: vscode.ExtensionContext) {
 
 // this method is called when your extension is deactivated
 export function deactivate() {}
+
+
+function loadConfigure(diagnosticCollection: vscode.DiagnosticCollection){
+    vscode.workspace.onDidSaveTextDocument(() => startLint(diagnosticCollection));
+}
+
+
+function startLint(diagnosticCollection: vscode.DiagnosticCollection){
+    timer = global.setTimeout(doLint, 1500); 
+}
+
+function doLint(diagnosticCollection: vscode.DiagnosticCollection){
+    if (vscode.window.activeTextEditor) {
+        Lint(diagnosticCollection);
+    }
+    clearTimeout(timer);
+}
+
+function Lint(diagnosticCollection: vscode.DiagnosticCollection){
+    let mizarLintOutput;
+    mizarLintOutput = runOnFile(diagnosticCollection);
+    vscode.window.showInformationMessage('called!');
+    analysisResult(diagnosticCollection, mizarLintOutput);
+    
+}
+
+function analysisResult(diagnosticCollection: vscode.DiagnosticCollection, output: string){
+    diagnosticCollection.clear();
+    // 1 = path, 2 = line, 3 = severity, 4 = message
+    // let regex = /\w+/;
+    let regex = /^(.*):([0-9]+):\s*(\w+):(.*\s+\[.*\])\s+\[([0-9]+)\]/gm;
+    let regexArray: RegExpExecArray | null;
+    let diagnostics: vscode.Diagnostic[] = [];
+
+    // 行単位のループ
+    while (regexArray = regex.exec(output)){
+        console.log(regexArray);
+        if (regexArray[1] === undefined || regexArray[2] === undefined
+            || regexArray[3] === undefined || regexArray[4] === undefined
+            || regexArray[5] === undefined) {
+            continue;
+        }
+        let pos1 = new vscode.Position(Number(regexArray[2]), 0);
+        let pos2 = new vscode.Position(Number(regexArray[2]), 1);
+        let range = new vscode.Range(pos1, pos2);
+        diagnostics.push(new vscode.Diagnostic(range, regexArray[4]));
+    }
+
+    
+}
+
+function runOnFile(diagnosticCollection: vscode.DiagnosticCollection){
+    if (vscode.window.activeTextEditor == undefined) {
+        return  ""
+    }
+
+    let activedoc = vscode.window.activeTextEditor.document;
+    let filename = activedoc.fileName;
+    let workspacefolder = vscode.workspace.getWorkspaceFolder(activedoc.uri)
+
+    let workspaces = null;
+    if (workspacefolder != undefined) {
+        workspaces = [workspacefolder.uri.fsPath]
+    }
+
+    let result = runMizarLint(filename, false);
+    console.log(result)
+    return result;
+
+}
+
+function runMizarLint(fileName: string, enableworkspace: boolean){
+    let exec = 'python';
+    let params = ['C:\\Users\\w041ff\\Desktop\\test\\test.py', fileName];
+    let result = lint(exec, params);
+    return result.join('\n');
+}
+
+function lint(exec: string, params: string[]){
+    let result = cp.spawnSync(exec, params)
+    let stdout = result.stdout;
+    let stderr = result.stderr;
+    let out = [result.stdout, result.stderr]
+    return out;
+}
