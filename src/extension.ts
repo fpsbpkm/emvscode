@@ -159,19 +159,23 @@ export function deactivate() {}
 
 
 function loadConfigure(diagnosticCollection: vscode.DiagnosticCollection){
-    vscode.workspace.onDidSaveTextDocument(() => startLint(diagnosticCollection));
+    // NOTE:vscodeが連続保存の処理を中断しているから上手くいっているかも
+    vscode.workspace.onDidSaveTextDocument((() => startLint(diagnosticCollection)).bind(startLint));
 }
 
 
 function startLint(diagnosticCollection: vscode.DiagnosticCollection){
     timer = global.setTimeout(doLint, 1500); 
 }
-
+let cnt_called = 0;
 function doLint(diagnosticCollection: vscode.DiagnosticCollection){
+    cnt_called += 1;
+    console.log(cnt_called);
     if (vscode.window.activeTextEditor) {
         Lint(diagnosticCollection);
     }
-    clearTimeout(timer);
+    // FIXME:中断処理が必要になるかも
+    // clearTimeout(timer);
 }
 
 function Lint(diagnosticCollection: vscode.DiagnosticCollection){
@@ -183,28 +187,29 @@ function Lint(diagnosticCollection: vscode.DiagnosticCollection){
 }
 
 function analysisResult(diagnosticCollection: vscode.DiagnosticCollection, output: string){
-    diagnosticCollection.clear();
+    // diagnosticCollection.clear();
     // 1 = path, 2 = line, 3 = severity, 4 = message
-    // let regex = /\w+/;
-    let regex = /^(.*):([0-9]+):\s*(\w+):(.*\s+\[.*\])\s+\[([0-9]+)\]/gm;
+    let regex = /.+\s/;
+    // let regex = /^(.*):([0-9]+):\s*(\w+):(.*\s+\[.*\])\s+\[([0-9]+)\]/gm;
     let regexArray: RegExpExecArray | null;
     let diagnostics: vscode.Diagnostic[] = [];
 
     // 行単位のループ
+    // FIXME:ループにすら入っていない
     while (regexArray = regex.exec(output)){
-        console.log(regexArray);
+        // console.log(regexArray);
         if (regexArray[1] === undefined || regexArray[2] === undefined
             || regexArray[3] === undefined || regexArray[4] === undefined
             || regexArray[5] === undefined) {
             continue;
         }
+        console.log('matched');
         let pos1 = new vscode.Position(Number(regexArray[2]), 0);
         let pos2 = new vscode.Position(Number(regexArray[2]), 1);
         let range = new vscode.Range(pos1, pos2);
         diagnostics.push(new vscode.Diagnostic(range, regexArray[4]));
     }
-
-    
+    console.log('finished');
 }
 
 function runOnFile(diagnosticCollection: vscode.DiagnosticCollection){
@@ -222,7 +227,7 @@ function runOnFile(diagnosticCollection: vscode.DiagnosticCollection){
     }
 
     let result = runMizarLint(filename, false);
-    console.log(result)
+    console.log(`result:${result}`);
     return result;
 
 }
@@ -231,7 +236,7 @@ function runMizarLint(fileName: string, enableworkspace: boolean){
     let exec = 'python';
     let params = ['C:\\Users\\w041ff\\Desktop\\test\\test.py', fileName];
     let result = lint(exec, params);
-    return result.join('\n');
+    return result.join('\n').slice(1);
 }
 
 function lint(exec: string, params: string[]){
