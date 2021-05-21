@@ -213,17 +213,17 @@ function analysisResult(diagnosticCollection: vscode.DiagnosticCollection, outpu
 }
 
 function runOnFile(diagnosticCollection: vscode.DiagnosticCollection){
-    if (vscode.window.activeTextEditor == undefined) {
-        return  ""
+    if (vscode.window.activeTextEditor === undefined) {
+        return  "";
     }
 
     let activedoc = vscode.window.activeTextEditor.document;
     let filename = activedoc.fileName;
-    let workspacefolder = vscode.workspace.getWorkspaceFolder(activedoc.uri)
+    let workspacefolder = vscode.workspace.getWorkspaceFolder(activedoc.uri);
 
     let workspaces = null;
-    if (workspacefolder != undefined) {
-        workspaces = [workspacefolder.uri.fsPath]
+    if (workspacefolder !== undefined) {
+        workspaces = [workspacefolder.uri.fsPath];
     }
 
     let result = runMizarLint(filename, false);
@@ -240,9 +240,9 @@ function runMizarLint(fileName: string, enableworkspace: boolean){
 }
 
 function lint(exec: string, params: string[]){
-    let result = cp.spawnSync(exec, params)
+    let result = cp.spawnSync(exec, params);
     let stdout = result.stdout;
     let stderr = result.stderr;
-    let out = [result.stdout, result.stderr]
+    let out = [result.stdout, result.stderr];
     return out;
 }
