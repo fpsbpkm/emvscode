@@ -6,8 +6,6 @@ import { displayErrorLinks } from './displayErrors';
 import { DefinitionProvider} from './goToDefinition';
 import { HoverProvider } from './hover';
 import * as cp from 'child_process';
-import { PassThrough } from 'stream';
-import { pushDiagnostic } from './displayErrors';
 
 export const queryMizarMsg = makeQueryFunction();
 let timer: NodeJS.Timer;
@@ -164,12 +162,12 @@ export function deactivate() {}
 
 
 function loadConfigure(){
-    // NOTE:vscodeが連続保存の処理を中断しているから上手くいっている
+    // NOTE:vscodeが連続保存の処理を中断しているから上手くいっている？
     vscode.workspace.onDidSaveTextDocument((() => startLint()));
 }
 
 function startLint(){
-    timer = global.setTimeout(Lint, 1500); 
+    timer = global.setTimeout(Lint, 1000); 
 }
 
 // cpplint-extensionを真似たが，不要かも
@@ -191,11 +189,19 @@ function Lint(){
 }
 
 function analysisResult(output: string, doc: vscode.TextDocument){
+    let prevDiagnostics = vscode.languages.getDiagnostics(doc.uri);
+    let diagnostics: vscode.Diagnostic[] = [];
+    // verifierが検出したエラーは保持しておく
+    for (let diagnostic of prevDiagnostics){
+        if (diagnostic.severity === 0){
+            diagnostics.push(diagnostic);
+        }
+    }
     diagnosticCollection.clear();
     // 1 = path, 2 = line, 3 = severity, 4 = message
     let regex = /^(.*):([0-9]+):\s*(\w+):(.*\s+\[.*\])\s+\[([0-9]+)\]/gm;
     let regexArray: RegExpExecArray | null;
-    let diagnostics: vscode.Diagnostic[] = [];
+    
     // Mizar lintが検出したエラーをProblemsへ反映
     while (regexArray = regex.exec(output)){
         if (regexArray[1] === undefined || regexArray[2] === undefined
@@ -203,17 +209,17 @@ function analysisResult(output: string, doc: vscode.TextDocument){
             || regexArray[5] === undefined) {
             continue;
         }
-        // console.log('matched');
         let errorLineNum = Number(regexArray[2])-1;
         let errorLine = doc.lineAt(errorLineNum);
         let errorMsg = regexArray[4];
         let pos1 = new vscode.Position(Number(errorLineNum), 0);
         let pos2 = new vscode.Position(Number(errorLineNum), errorLine.text.length);
         let range = new vscode.Range(pos1, pos2);
-        let d = new vscode.Diagnostic(range, errorMsg);
+        let d = new vscode.Diagnostic(range, errorMsg, 1);
         diagnostics.push(d);
-        diagnosticCollection.set(doc.uri, diagnostics);
     }
+    diagnosticCollection.set(doc.uri, diagnostics);
+
 }
 
 function runOnFile(){
@@ -221,9 +227,9 @@ function runOnFile(){
         return "";
     }
 
-    let activedoc = vscode.window.activeTextEditor.document;
-    let filename = activedoc.fileName;
-    let workspacefolder = vscode.workspace.getWorkspaceFolder(activedoc.uri);
+    let activeDoc = vscode.window.activeTextEditor.document;
+    let filename = activeDoc.fileName;
+    let workspacefolder = vscode.workspace.getWorkspaceFolder(activeDoc.uri);
 
     let workspaces = null;
     if (workspacefolder !== undefined) {
@@ -231,7 +237,6 @@ function runOnFile(){
     }
 
     let result = runMizarLint(filename, false);
-    console.log(`result:${result}`);
     return result;
 
 }
@@ -242,8 +247,8 @@ function runMizarLint(fileName: string, enableworkspace: boolean){
     let lintPath = path.join(__dirname, '..\\lint\\test.py');
     let params = [lintPath, fileName];
     let result = lint(exec, params);
-    // FIXME:stdoutは不要なのか？
-    return result.join('\n').slice(1, result[1].length);
+    let msgLength = result[0].length + result[1].length;
+    return result.join('\n').slice(1, msgLength);
 }
 
 function lint(exec: string, params: string[]){
